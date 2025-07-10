@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Playable Ad - Sequential Dress Up</title>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    html, body { width:100%; height:100%; overflow:hidden; background:#000; cursor:url("pointer.png"), auto; }
+    #game-container { position:relative; width:100vw; height:100vh; transition:opacity .5s ease; }
+    .dark-overlay { position:absolute; inset:0; background:rgba(0,0,0,0.4); display:none; z-index:1; }
+    .character-wrapper { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:auto; height:100vh; z-index:2; }
+    #character, #outfits-container img { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); height:100%; width:auto; object-fit:contain; }
+    #outfits-container { position:absolute; inset:0; pointer-events:none; z-index:3; }
+    .btn-container { position:absolute; display:flex; flex-direction:column; gap:12px; z-index:2; }
+    .btn-container.left { left:10px; top:50%; transform:translateY(-50%); }
+    .btn-container.right { right:10px; top:50%; transform:translateY(-50%); }
+    .drag-btn { width: calc(min(27vw, 135px) * 0.8); height:auto; border-radius:10px; object-fit:contain; cursor:url("grab.png"), grab; opacity:0.3; }
+    .drag-btn.active { opacity:1; }
+    .blinking { animation: blink 1s infinite; }
+    @keyframes blink { 0%,100% { transform:scale(1); opacity:1; } 50% { transform:scale(1.2); opacity:0.3; } }
+    #tutorial-hand { position:absolute; width:60px; height:60px; display:none; z-index:5; }
+    #banner-container { display:none; position:absolute; inset:0; justify-content:center; align-items:center; background:#000; opacity:0; transition:opacity .5s ease; z-index:10; }
+    #banner-container.show { opacity:1; }
+    #banner-container img { height:100%; width:auto; object-fit:cover; }
+  </style>
+</head>
+<body>
+  <div id="game-container">
+    <div class="dark-overlay" id="overlay"></div>
+    <div class="character-wrapper" id="dropzone">
+      <img id="character" src="character_base.png" alt="Character">
+      <div id="outfits-container"></div>
+    </div>
+    <div class="btn-container left">
+      <img id="btn1" class="drag-btn" src="btn_outfit1.png" data-btn="1" data-outfit="composite_outfit1.png" draggable="false">
+      <img id="btn2" class="drag-btn" src="btn_outfit2.png" data-btn="2" data-outfit="composite_outfit2.png" draggable="false">
+      <img id="btn3" class="drag-btn" src="btn_outfit3.png" data-btn="3" data-outfit="composite_outfit3.png" draggable="false">
+    </div>
+    <div class="btn-container right">
+      <img id="btn4" class="drag-btn" src="btn_outfit4.png" data-btn="4" data-outfit="composite_outfit4.png" draggable="false">
+      <img id="btn5" class="drag-btn" src="btn_outfit5.png" data-btn="5" data-outfit="composite_outfit5.png" draggable="false">
+      <img id="btn6" class="drag-btn" src="btn_outfit6.png" data-btn="6" data-outfit="composite_outfit6.png" draggable="false">
+    </div>
+    <img id="tutorial-hand" src="pointer.png" alt="Hand">
+  </div>
+  <div id="banner-container">
+    <img src="banner.png" alt="Banner">
+  </div>
+  <audio id="win-sound" src="win.MP3"></audio>
+  <audio id="click-sound" src="click.mp3"></audio>
+  <audio id="wear-sound" src="wear.mp3"></audio>
+  <audio id="bgm" src="BGM3.MP3" loop></audio>
+
+  <script>
+    const buttons = Array.from(document.querySelectorAll('.drag-btn'));
+    const dropzone = document.getElementById('dropzone');
+    const overlay = document.getElementById('overlay');
+    const hand    = document.getElementById('tutorial-hand');
+    const gameContainer = document.getElementById('game-container');
+    const banner = document.getElementById('banner-container');
+    const winSound = document.getElementById('win-sound');
+    const clickSound = document.getElementById('click-sound');
+    const wearSound = document.getElementById('wear-sound');
+    const bgm = document.getElementById('bgm');
+    let isTutorial = true, step = 1, bgmStarted = false, soundUnlocked = false;
+
+    // Unlock audio on first user interaction
+    function unlockAudio() {
+      clickSound.play().then(() => clickSound.pause()).catch(() => {});
+      wearSound.play().then(() => wearSound.pause()).catch(() => {});
+      winSound.play().then(() => winSound.pause()).catch(() => {});
+      bgm.volume = 0.2;
+      bgm.play().then(() => bgm.pause()).catch(() => {});
+      soundUnlocked = true;
+      document.removeEventListener('pointerdown', unlockAudio);
+    }
+    document.addEventListener('pointerdown', unlockAudio);
+
+    // Play background music on first drag start
+    buttons.forEach(b => {
+      b.addEventListener('dragstart', () => {
+        if (!bgmStarted && soundUnlocked) {
+          bgm.play().catch(e => console.warn('BGM play 실패:', e));
+          bgmStarted = true;
+        }
+      });
+    });
+
+    // Play click sound on general clicks
+    document.addEventListener('click', () => {
+      if (soundUnlocked) {
+        clickSound.currentTime = 0;
+        clickSound.play().catch(() => {});
+      }
+    });
+
+    function highlight(btn) {
+      buttons.forEach(b => b.classList.remove('active','blinking'));
+      btn.classList.add('active','blinking'); btn.draggable = true;
+    }
+
+    function startTutorial() {
+      overlay.style.display = hand.style.display = 'block'; step = 1;
+      buttons.forEach(b => { b.draggable = false; b.style.opacity = '0.3'; });
+      highlight(document.getElementById('btn1')); animateHand(document.getElementById('btn1'));
+    }
+
+    function animateHand(btn) {
+      if (!isTutorial) return;
+      if (soundUnlocked) {
+        clickSound.currentTime = 0;
+        clickSound.play().catch(() => {});
+      }
+      const r = btn.getBoundingClientRect(), d = dropzone.getBoundingClientRect();
+      hand.style.transition = 'none';
+      hand.style.left = `${r.left + r.width/2 - 30}px`;
+      hand.style.top  = `${r.top  + r.height/2 - 30}px`;
+      setTimeout(() => {
+        if (!isTutorial) return;
+        hand.style.transition = 'all 1.5s ease';
+        hand.style.left = `${window.innerWidth/2 - 30}px`;
+        hand.style.top  = `${d.top + d.height/2 + 20}px`;
+        setTimeout(() => animateHand(btn), 1600);
+      }, 300);
+    }
+
+    function endTutorial() {
+      isTutorial = false; overlay.style.display = hand.style.display = 'none';
+      const first = document.getElementById('btn1'); first.draggable = false; first.style.opacity = '0.5'; first.classList.remove('blinking');
+      document.getElementById('character').src = 'composite_outfit1.png';
+      if (soundUnlocked) { wearSound.currentTime = 0; wearSound.play().catch(() => {}); }
+      step = 2; nextStep();
+    }
+
+    function nextStep() { if (step > 6) return; highlight(document.getElementById('btn'+step)); }
+
+    function showBanner() {
+      if (soundUnlocked) { winSound.currentTime = 0; winSound.play().catch(() => {}); }
+      setTimeout(() => {
+        gameContainer.style.opacity = 0; banner.style.display = 'flex';
+        setTimeout(() => banner.classList.add('show'), 50);
+      }, 1000);
+    }
+
+    document.addEventListener('DOMContentLoaded', startTutorial);
+    buttons.forEach(b => {
+      b.addEventListener('dragstart', e => {
+        if (isTutorial && step===1 && b.dataset.btn==='1') return endTutorial();
+        if (!isTutorial && b.dataset.btn===step.toString()) {
+          document.getElementById('character').src = b.dataset.outfit;
+          if (soundUnlocked) { wearSound.currentTime = 0; wearSound.play().catch(() => {}); }
+          b.draggable = false; b.style.opacity = '0.5'; b.classList.remove('blinking'); step++; nextStep();
+          if (step>6) showBanner();
+        }
+      });
+    });
+    dropzone.addEventListener('dragover', e => e.preventDefault());
+    dropzone.addEventListener('drop', e => e.preventDefault());
+  </script>
+</body>
+</html>
